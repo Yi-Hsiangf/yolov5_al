@@ -1,0 +1,37 @@
+{
+    "os": "Linux-5.13.0-27-generic-x86_64-with-debian-bullseye-sid",
+    "python": "3.7.11",
+    "heartbeatAt": "2022-03-07T15:14:46.516039",
+    "startedAt": "2022-03-07T15:14:45.262054",
+    "docker": null,
+    "gpu": "Quadro RTX 8000",
+    "gpu_count": 1,
+    "cpu_count": 36,
+    "cuda": null,
+    "args": [
+        "--img",
+        "640",
+        "--batch",
+        "16",
+        "--epochs",
+        "3",
+        "--data",
+        "VOC.yaml",
+        "--weights",
+        "yolov5s.pt",
+        "--img",
+        "640"
+    ],
+    "state": "running",
+    "program": "train.py",
+    "codePath": "train.py",
+    "git": {
+        "remote": "https://github.com/ultralytics/yolov5.git",
+        "commit": "acc58c1dcfba054ef936ee1458a8ff74a088ee74"
+    },
+    "email": null,
+    "root": "/usr/stud/fangyi/yolov5",
+    "host": "node13",
+    "username": "fangyi",
+    "executable": "/usr/stud/fangyi/anaconda3/envs/yoloenv/bin/python"
+}
