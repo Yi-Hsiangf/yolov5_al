@@ -92,7 +92,7 @@ def exif_transpose(image):
 
 
 def create_dataloader(path, imgsz, batch_size, stride, single_cls=False, hyp=None, augment=False, cache=False, pad=0.0,
-                      rect=False, rank=-1, workers=8, image_weights=False, quad=False, prefix='', shuffle=False):
+                      rect=False, rank=-1, workers=8, image_weights=False, quad=False, prefix='', shuffle=False, training=True):
     if rect and shuffle:
         LOGGER.warning('WARNING: --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
@@ -106,7 +106,8 @@ def create_dataloader(path, imgsz, batch_size, stride, single_cls=False, hyp=Non
                                       stride=int(stride),
                                       pad=pad,
                                       image_weights=image_weights,
-                                      prefix=prefix)
+                                      prefix=prefix,
+                                      training=training)
 
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
@@ -380,7 +381,7 @@ class LoadImagesAndLabels(Dataset):
     cache_version = 0.6  # dataset labels *.cache version
 
     def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
-                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix=''):
+                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix='', training=True, subset=[]):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
@@ -435,16 +436,44 @@ class LoadImagesAndLabels(Dataset):
         # Read cache
         [cache.pop(k) for k in ('hash', 'version', 'msgs')]  # remove items
         labels, shapes, self.segments = zip(*cache.values())
-        self.labels = list(labels)
-        self.shapes = np.array(shapes, dtype=np.float64)
-        self.im_files = list(cache.keys())  # update
-        self.label_files = img2label_paths(cache.keys())  # update
-        n = len(shapes)  # number of images
-        bi = np.floor(np.arange(n) / batch_size).astype(np.int)  # batch index
-        nb = bi[-1] + 1  # number of batches
-        self.batch = bi  # batch index of image
-        self.n = n
-        self.indices = range(n)
+
+
+        #subset = [0,2,3,5,11,12,15,16]
+        #subset = [0,2,4,6,8,10,12,14,16,18,20]
+        #subset = list(range(16))
+
+        if training == True: 
+            print("In train phase")
+            self.labels = [list(labels)[i] for i in subset]
+            self.shapes = np.array(shapes, dtype=np.float64)
+            self.shapes = self.shapes[subset]
+
+            self.im_files = list(cache.keys())  # update
+            self.label_files = img2label_paths(cache.keys())  # update
+            self.im_files = [self.im_files[i] for i in subset]
+            self.label_files = [self.label_files[i] for i in subset]
+            n = len(shapes)  # number of images
+
+            
+            bi = np.floor(np.arange(n) / batch_size).astype(np.int)  # batch index
+            nb = bi[-1] + 1  # number of batches
+            self.batch = bi  # batch index of image
+            self.n = n
+            self.indices = subset
+        else:
+            print("In val phase")
+            self.labels = list(labels)
+            self.shapes = np.array(shapes, dtype=np.float64)
+            self.im_files = list(cache.keys())  # update
+            self.label_files = img2label_paths(cache.keys())  # update
+            n = len(shapes)  # number of images
+            bi = np.floor(np.arange(n) / batch_size).astype(np.int)  # batch index
+            nb = bi[-1] + 1  # number of batches
+            self.batch = bi  # batch index of image
+            self.n = n
+            self.indices = range(n)
+
+
 
         # Update labels
         include_class = []  # filter labels to include only these classes (optional)
@@ -548,7 +577,11 @@ class LoadImagesAndLabels(Dataset):
     #     return self
 
     def __getitem__(self, index):
-        index = self.indices[index]  # linear, shuffled, or image_weights
+        #print("index: ", index)
+        #print("self.indices: ", self.indices)
+        
+        print("index: ", index)
+        #index = self.indices[index]  # linear, shuffled, or image_weights
 
         hyp = self.hyp
         mosaic = self.mosaic and random.random() < hyp['mosaic']
@@ -622,7 +655,15 @@ class LoadImagesAndLabels(Dataset):
 
     def load_image(self, i):
         # Loads 1 image from dataset index 'i', returns (im, original hw, resized hw)
-        im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i],
+        #print("i: ", i)
+        #print("self.ims: ", len(self.ims))
+        #print("self.im_files: ", len(self.im_files))
+        #print("self.npy_files: ", len(self.npy_files))
+        #print("self.im_files[i]", self.im_files[i])
+        #print("self.npy_files[i]", self.npy_files[i])
+
+        print("self.ims: ", len(self.ims))
+        im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i]
         if im is None:  # not cached in RAM
             if fn.exists():  # load npy
                 im = np.load(fn)
@@ -650,8 +691,12 @@ class LoadImagesAndLabels(Dataset):
         labels4, segments4 = [], []
         s = self.img_size
         yc, xc = (int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border)  # mosaic center x, y
-        indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
+        #TODO
+        indices = [index] + random.choices(range(len(self.indices)), k=3)  # 3 additional image indices
+        print("indices: ", indices)
+        
         random.shuffle(indices)
+       
         for i, index in enumerate(indices):
             # Load image
             img, _, (h, w) = self.load_image(index)

@@ -22,6 +22,8 @@ from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 
+
+
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -229,7 +231,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                                               hyp=hyp, augment=True, cache=None if opt.cache == 'val' else opt.cache,
                                               rect=opt.rect, rank=LOCAL_RANK, workers=workers,
                                               image_weights=opt.image_weights, quad=opt.quad,
-                                              prefix=colorstr('train: '), shuffle=True)
+                                              prefix=colorstr('train: '), shuffle=True, training=True)
     mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class
     nb = len(train_loader)  # number of batches
     assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
@@ -239,8 +241,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         val_loader = create_dataloader(val_path, imgsz, batch_size // WORLD_SIZE * 2, gs, single_cls,
                                        hyp=hyp, cache=None if noval else opt.cache,
                                        rect=True, rank=-1, workers=workers * 2, pad=0.5,
-                                       prefix=colorstr('val: '))[0]
-
+                                       prefix=colorstr('val: '), training=False)[0]
+    
         if not resume:
             labels = np.concatenate(dataset.labels, 0)
             # c = torch.tensor(labels[:, 0])  # classes
@@ -290,7 +292,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     start = time.time()
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
-
+        print("############# train ################")
         # Update image weights (optional, single-GPU only)
         if opt.image_weights:
             cw = model.class_weights.cpu().numpy() * (1 - maps) ** 2 / nc  # class weights
