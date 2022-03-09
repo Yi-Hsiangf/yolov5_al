@@ -582,7 +582,7 @@ class LoadImagesAndLabels(Dataset):
         #print("index: ", index)
         #print("self.indices: ", self.indices)
         
-        print("index: ", index)
+        #print("index: ", index)
         #index = self.indices[index]  # linear, shuffled, or image_weights
 
         hyp = self.hyp
@@ -664,7 +664,7 @@ class LoadImagesAndLabels(Dataset):
         #print("self.im_files[i]", self.im_files[i])
         #print("self.npy_files[i]", self.npy_files[i])
 
-        print("self.ims: ", len(self.ims))
+        #print("self.ims: ", len(self.ims))
         im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i]
         if im is None:  # not cached in RAM
             if fn.exists():  # load npy
@@ -695,7 +695,7 @@ class LoadImagesAndLabels(Dataset):
         yc, xc = (int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border)  # mosaic center x, y
         #TODO
         indices = [index] + random.choices(range(len(self.indices)), k=3)  # 3 additional image indices
-        print("indices: ", indices)
+        #print("indices: ", indices)
         
         random.shuffle(indices)
        

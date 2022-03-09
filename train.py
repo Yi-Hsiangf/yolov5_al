@@ -100,9 +100,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     rand_state = np.random.RandomState(777)
     train_idx = []
     #pool_idx = list(range(16550)) #len of dataset
-    pool_idx = list(range(500))
-    count = 100
-    for cycle in range(3):
+    pool_idx = list(range(16500))
+    count = 1000
+    for cycle in range(5):
         save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, Active_learning, method = \
             Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
             opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.AL, opt.method
@@ -111,13 +111,17 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         if Active_learning == "True":
             AL = True
             print("Using Active Learning")
+            if method == "LLAL":
+                print("LLAL")
+            elif method == "Coreset":
+                print("Coreset")
         else:
             AL = False
             print("Using Random Selecting")
         
         print("#############Cycle " + str(cycle) + "##################")
         if cycle == 0:
-            train_idx.extend(random_indices(pool_idx, rand_state, count=100))
+            train_idx.extend(random_indices(pool_idx, rand_state, count=2000))
         print("len of training pool: ", len(train_idx))
         print("len of pool idx: ", len(pool_idx))
         # Directories
@@ -431,8 +435,12 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                             print("loss: ", loss)
                             loss = 0.5 * loss + 0.1 * loss_prediction_loss
                             #print("predict loss: ", loss_prediction_loss)
+                        elif method == "Coreset":
+                             pred = model(imgs)  # forward
+                             loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+
                     else:
-                        # Randomm, Coreset
+                        # Randomm
                         pred = model(imgs)  # forward
                         loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
                     
@@ -535,7 +543,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         
         end = time.time()
         print("training time: ", end-start)
-
+        '''
         if RANK in [-1, 0]:
             LOGGER.info(f'\n{epoch - start_epoch + 1} epochs completed in {(time.time() - t0) / 3600:.3f} hours.')
             for f in last, best:
@@ -561,7 +569,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
             callbacks.run('on_train_end', last, best, plots, epoch, results)
             LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}")
-            torch.cuda.empty_cache()
+        '''    
+        torch.cuda.empty_cache()
 
         ## Active Learning select the most informative imge:
         model.eval()
