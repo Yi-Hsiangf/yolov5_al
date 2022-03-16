@@ -108,8 +108,6 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
             Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
             opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.AL, opt.method
 
-        if cycle == 2:
-            weights = "yolov6s.pt"
     
         print("weights: ", weights)
 
