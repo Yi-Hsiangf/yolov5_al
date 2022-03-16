@@ -28,7 +28,7 @@ def get_intermediate(name):
     return hook
 
 
-def Coreset(device, model, labeled_loader, unlabel_loader, amount):
+def Coreset_select(device, model, labeled_loader, unlabel_loader, amount):
     feature1_hook = model.model._modules["17"].register_forward_hook(get_intermediate("first_fm"))
     feature2_hook = model.model._modules["20"].register_forward_hook(get_intermediate("second_fm"))
     feature3_hook = model.model._modules["23"].register_forward_hook(get_intermediate("third_fm"))
@@ -118,3 +118,7 @@ def greedy_k_center(labeled, unlabeled, amount):
             greedy_indices.append(farthest)
 
         return greedy_indices
+
+
+
+def Entropy_select(device, model, labeled_loader, unlabel_loader, amount):

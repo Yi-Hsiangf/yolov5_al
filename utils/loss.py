@@ -114,57 +114,146 @@ class ComputeLoss:
         for k in 'na', 'nc', 'nl', 'anchors':
             setattr(self, k, getattr(det, k))
 
-    def __call__(self, p, targets):  # predictions, targets, model
+    def __call__(self, p, targets, use_LLAL=True):  # predictions, targets, model
         device = targets.device
         lcls, lbox, lobj = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
         tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
 
+        # TODO: Init per image loss
+        lbox_img = torch.zeros(self.batch_size).to(device)
+        lbox_count = torch.zeros(self.batch_size).to(device)
+        lobj_img = torch.zeros(self.batch_size).to(device)
+        lcls_img = torch.zeros(self.batch_size).to(device)
+
         # Losses
-        for i, pi in enumerate(p):  # layer index, layer predictions
-            b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
-            tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
 
-            n = b.shape[0]  # number of targets
-            if n:
-                ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
 
-                # Regression
-                pxy = ps[:, :2].sigmoid() * 2 - 0.5
-                pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
-                pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
-                lbox += (1.0 - iou).mean()  # iou loss
+        if use_LLAL == True:
+            for i, pi in enumerate(p):  # layer index, layer predictions
+                b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
+                tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
+
+                n = b.shape[0]  # number of targets
+                if n:
+                    # Compute Regression
+                    ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
+                    # Regression
+                    pxy = ps[:, :2].sigmoid() * 2. - 0.5
+                    pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
+                    pbox = torch.cat((pxy, pwh), 1)  # predicted box
+
+                    iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
+                    lbox += (1.0 - iou).mean()  # iou loss
+
+                    for idx, img_idx in enumerate(b):
+                        # Regression
+                        ps_img = pi[b[idx], a[idx], gj[idx], gi[idx]]
+                        pxy_img = ps_img[:2].sigmoid() * 2. - 0.5
+                        pwh_img = (ps_img[2:4].sigmoid() * 2) ** 2 * anchors[i][idx]
+                        pbox_img = torch.cat((pxy_img, pwh_img), 0)  # predicted box
+                        iou = bbox_iou(pbox_img.T, tbox[i][idx], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
+                        lbox_img[img_idx] += (1.0 - iou)    
+                        lbox_count[img_idx] += 1            
+                        
+
+                        # Classification
+                        t_img = torch.full_like(ps_img[5:], self.cn, device=device)  # targets
+                        t_img[tcls[i][idx]] = self.cp
+                        lcls_img[img_idx] += self.BCEcls(ps_img[5:], t_img) / n              
+
 
                 # Objectness
-                score_iou = iou.detach().clamp(0).type(tobj.dtype)
-                if self.sort_obj_iou:
-                    sort_id = torch.argsort(score_iou)
-                    b, a, gj, gi, score_iou = b[sort_id], a[sort_id], gj[sort_id], gi[sort_id], score_iou[sort_id]
-                tobj[b, a, gj, gi] = (1.0 - self.gr) + self.gr * score_iou  # iou ratio
+                for img_idx in range(self.batch_size):
+                    #print("img_idx: ", img_idx)
+                    #print("pi[..., 4]: ", pi[..., 4].shape)
+                    obji_img = self.BCEobj(pi[..., 4][img_idx], tobj[img_idx])
+                    lobj_img[img_idx] += obji_img * self.balance[i] * (1/self.batch_size)
+                    
+                if self.autobalance:
+                    self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
 
-                # Classification
-                if self.nc > 1:  # cls loss (only if multiple classes)
-                    t = torch.full_like(ps[:, 5:], self.cn, device=device)  # targets
-                    t[range(n), tcls[i]] = self.cp
-                    lcls += self.BCEcls(ps[:, 5:], t)  # BCE
+            # Regression (not the same)
+            c = 0
+            lbox_total = 0  
+            for img_idx in range(self.batch_size):
+                if lbox_count[img_idx] != 0:
+                    lbox_img[img_idx] /= lbox_count[img_idx]
+            '''
+                    lbox_total += lbox_img[img_idx]
+            lbox_llal = torch.unsqueeze(lbox_total, 0)
+            '''
+            ### Objectness (Same)
+            lobj_total = lobj_img.sum()       
+            lobj = torch.unsqueeze(lobj_total, 0)
 
-                # Append targets to text file
-                # with open('targets.txt', 'a') as file:
-                #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
+            ### Classification (Same)
+            lcls_total = lcls_img.sum()
+            lcls = torch.unsqueeze(lcls_total, 0)
 
-            obji = self.BCEobj(pi[..., 4], tobj)
-            lobj += obji * self.balance[i]  # obj loss
             if self.autobalance:
-                self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
+                self.balance = [x / self.balance[self.ssi] for x in self.balance]
+            lbox *= self.hyp['box']
+            lobj *= self.hyp['obj']
+            lcls *= self.hyp['cls']
+            bs = tobj.shape[0]  # batch size
 
-        if self.autobalance:
-            self.balance = [x / self.balance[self.ssi] for x in self.balance]
-        lbox *= self.hyp['box']
-        lobj *= self.hyp['obj']
-        lcls *= self.hyp['cls']
-        bs = tobj.shape[0]  # batch size
+            lbox_img *= self.hyp['box']
+            lobj_img *= self.hyp['obj']
+            lcls_img *= self.hyp['cls']
+            loss_img = lbox_img + lobj_img + lcls_img           
+        else:  
+            # for validation calualte all batch together
+            for i, pi in enumerate(p):  # layer index, layer predictions
+                b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
+                tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
 
-        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+                n = b.shape[0]  # number of targets
+                if n:          
+                    ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
+                    # Regression
+                    pxy = ps[:, :2].sigmoid() * 2. - 0.5
+                    pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
+                    pbox = torch.cat((pxy, pwh), 1)  # predicted box
+
+                    iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
+                    lbox += (1.0 - iou).mean()  # iou loss
+
+                    # Objectness
+                    score_iou = iou.detach().clamp(0).type(tobj.dtype)
+                    if self.sort_obj_iou:
+                        sort_id = torch.argsort(score_iou)
+                        b, a, gj, gi, score_iou = b[sort_id], a[sort_id], gj[sort_id], gi[sort_id], score_iou[sort_id]
+                    tobj[b, a, gj, gi] = (1.0 - self.gr) + self.gr * score_iou  # iou ratio
+                    
+
+                    # Classification
+                    if self.nc > 1:  # cls loss (only if multiple classes)
+                        t = torch.full_like(ps[:, 5:], self.cn, device=device)  # targets
+                        t[range(n), tcls[i]] = self.cp
+    
+                        lcls += self.BCEcls(ps[:, 5:], t)  # BCE
+
+                    # Append targets to text file
+                    # with open('targets.txt', 'a') as file:
+                    #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]                
+
+                obji = self.BCEobj(pi[..., 4], tobj)
+                lobj += obji * self.balance[i]  # obj loss
+                if self.autobalance:
+                    self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
+         
+            if self.autobalance:
+                self.balance = [x / self.balance[self.ssi] for x in self.balance]
+
+            #print("lbox: ", lbox, " lobj: ", lobj)
+            lbox *= self.hyp['box']
+            lobj *= self.hyp['obj']
+            lcls *= self.hyp['cls']
+            bs = tobj.shape[0]  # batch size
+
+            loss_img = torch.zeros(self.batch_size).to(device)
+
+        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach(), loss_img
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)

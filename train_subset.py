@@ -433,50 +433,56 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
             with amp.autocast(enabled=cuda):
                 if AL == True:
                     if method == "LLAL":
-                        feature1_hook = model.model._modules["17"].register_forward_hook(get_intermediate("first_fm"))
-                        feature2_hook = model.model._modules["20"].register_forward_hook(get_intermediate("second_fm"))
-                        feature3_hook = model.model._modules["23"].register_forward_hook(get_intermediate("third_fm"))
-                        
-                        pred = model(imgs)  # forward
-                        #print("pred len: ", len(pred))
-                        #print("pred 0 shape: ", pred[0].shape)
-                        loss, loss_items, img_loss = compute_loss(pred, targets.to(device), True)  # loss scaled by batch_size
-                        img_loss = img_loss.view(img_loss.size(0))
-                        features = []
-                        features.append(intermediate['first_fm'])
-                        features.append(intermediate['second_fm'])
-                        features.append(intermediate['third_fm'])
-                        #for feature in features:
-                        #    print("feature shape: ", feature.shape)
 
-                        feature1_hook.remove()
-                        feature2_hook.remove()
-                        feature3_hook.remove()
-                    
-                        if epoch > 20:
-                            features[0] = features[0].detach()
-                            features[1] = features[1].detach()
-                            features[2] = features[2].detach()
+                        if epoch > 150:
+                            feature1_hook = model.model._modules["17"].register_forward_hook(get_intermediate("first_fm"))
+                            feature2_hook = model.model._modules["20"].register_forward_hook(get_intermediate("second_fm"))
+                            feature3_hook = model.model._modules["23"].register_forward_hook(get_intermediate("third_fm"))
+                            
+                            pred = model(imgs)  # forward
+                            #print("pred len: ", len(pred))
+                            #print("pred 0 shape: ", pred[0].shape)
+                            loss, loss_items, img_loss = compute_loss(pred, targets.to(device), True)  # loss scaled by batch_size
+                            img_loss = img_loss.view(img_loss.size(0))
+                            features = []
+                            features.append(intermediate['first_fm'])
+                            features.append(intermediate['second_fm'])
+                            features.append(intermediate['third_fm'])
+                            #for feature in features:
+                            #    print("feature shape: ", feature.shape)
+
+                            feature1_hook.remove()
+                            feature2_hook.remove()
+                            feature3_hook.remove()
+                        
+                            if epoch > 180:
+                                features[0] = features[0].detach()
+                                features[1] = features[1].detach()
+                                features[2] = features[2].detach()
                         
 
-                        loss_pred = lossnet(features)
-                        loss_pred = loss_pred.view(loss_pred.size(0))
-                        #print("predicted img loss: ", loss_pred)
-                        #print("target img loss: ", img_loss)
-                        criterion_lp = LossPredictionLoss()
-                        loss_prediction_loss = criterion_lp(loss_pred, img_loss)
-                        print("loss_prediction_loss: ", loss_prediction_loss)
-                        print("loss: ", loss)
-                        loss = 0.5 * loss + 0.1 * loss_prediction_loss
-                        #print("predict loss: ", loss_prediction_loss)
+                            loss_pred = lossnet(features)
+                            loss_pred = loss_pred.view(loss_pred.size(0))
+                            #print("predicted img loss: ", loss_pred)
+                            #print("target img loss: ", img_loss)
+                            criterion_lp = LossPredictionLoss()
+                            loss_prediction_loss = criterion_lp(loss_pred, img_loss)
+                            print("loss_prediction_loss: ", loss_prediction_loss)
+                            print("loss: ", loss)
+                            loss = 0.5 * loss + 0.1 * loss_prediction_loss
+                            #print("predict loss: ", loss_prediction_loss)
+                        else:
+                            pred = model(imgs)  # forward
+                            loss, loss_items, img_loss = compute_loss(pred, targets.to(device), False)
+
                     elif method == "Coreset":
                             pred = model(imgs)  # forward
-                            loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                            loss, loss_items, img_loss = compute_loss(pred, targets.to(device), False)  # loss scaled by batch_size
 
                 else:
-                    # Randomm
+                    # Randomm, Entropy
                     pred = model(imgs)  # forward
-                    loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                    loss, loss_items, img_loss = compute_loss(pred, targets.to(device), False)  # loss scaled by batch_size
                 
                 
                 if RANK != -1:
@@ -672,7 +678,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
         elif method == "Coreset":
             print("using coreset")
-            idx = Coreset(device, model, train_loader, unlabel_loader, count)
+            idx = Coreset_select(device, model, train_loader, unlabel_loader, count)
             #print("new indices: ", new_indices)
             #select_id = list(torch.tensor(pool_idx)[new_indices].numpy())
             select_id = [pool_idx[i] for i in idx]
@@ -691,6 +697,36 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
             np_train_idx_coreset = np.array(train_idx_coreset)
             np_train_idx_coreset.tofile(output_bin_file)
+
+        elif method == "Entropy":
+            print("using entropy selecting")
+            with torch.no_grad():
+                for i, (imgs, targets, paths, _) in enumerate(unlabel_loader):
+                    imgs = imgs.to(device, non_blocking=True).float() / 255.0  # uint8 to float32, 0-255 to 0.0-1.0
+                    targets = targets.to(device)
+                    pred = model(imgs)
+                    print()
+
+
+                
+            '''
+            idx = torch.argsort(pred_l, dim=0)[-count:]
+            #print("idx: ", idx)
+            #print("pool_idx: ", pool_idx)
+            #print("train_idx: ", train_idx)
+
+
+            #for id in idx:
+                #print("id: ", id)
+                #print("tmp pool: ", len(tmp_pool))
+            select_id = [pool_idx[i] for i in idx]
+            #print("select_id: ", select_id)
+            train_idx += select_id
+            for id in select_id:
+                pool_idx.remove(id)
+            '''
+
+
     else:
         # Random Select
 
