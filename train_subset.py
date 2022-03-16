@@ -104,9 +104,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     count = 1000
     #count = 10
 
-    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, Active_learning, method = \
+    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, Active_learning, method, input_bin_file, output_bin_file = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.AL, opt.method
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.AL, opt.method, opt.input_bin_file, opt.output_bin_file
 
 
     print("weights: ", weights)
@@ -123,19 +123,19 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     else:
         AL = False
         print("Using Random Selecting")
-    
-
-    train_idx.extend(random_indices(pool_idx, rand_state, count=2000))
-
-    output_file = open('2000train_idx.txt', 'w')
+   
+    train_idx_np = np.fromfile(input_bin_file, dtype=np.int64)
+    train_idx = list(train_idx_np) 
 
     for idx in train_idx:
-        output_file.write(idx)
-    output_file.close()
+        pool_idx.remove(idx)
+    
+    
+
 
     print("len of training pool: ", len(train_idx))
     print("len of pool idx: ", len(pool_idx))
-    #print("train_idx: ", train_idx)
+    print("train_idx: ", train_idx)
     # Directories
     w = save_dir / 'weights'  # weights dir
     (w.parent if evolve else w).mkdir(parents=True, exist_ok=True)  # make dir
@@ -620,6 +620,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
         # Trainloader
         # Run the unlabeled set
+
+
         print("run unlabled set")
         if method == "LLAL":
             feature1_hook = model.model._modules["17"].register_forward_hook(get_intermediate("first_fm"))
@@ -686,26 +688,17 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
             print("pool len: ", len(pool_idx))
             #non_choosen_set = [idx for idx in subset if idx not in select_indices_in_subset]
             #unlabeled_set = non_choosen_set + unlabeled_set[subset_num:] 
+
+            np_train_idx_coreset = np.array(train_idx_coreset)
+            np_train_idx_coreset.tofile(output_bin_file)
     else:
         # Random Select
+
         train_idx.extend(random_indices(pool_idx, rand_state, count=count))
+        np_train_idx = np.array(train_idx)
+        np_train_idx.tofile(output_bin_file)
+    
 
-
-    output_file_coreset = open('3000train_idx_coreset.txt', 'w')
-
-    for idx in train_idx_coreset:
-        output_file_coreset.write(idx)
-    output_file_coreset.close()
-
-    train_idx.extend(random_indices(pool_idx, rand_state, count=count))
-    output_file_random = open('3000train_idx_random.txt', 'w')
-
-    for idx in train_idx:
-        output_file_random.write(idx)
-    output_file_random.close()
-
-    #print("pool idx: ", pool_idx)
-    #print("train idx: ", train_idx)     
     selecting_end_time = time.time()
     print("total selecting time (min): ", (selecting_end_time - selecting_start_time) / 60)
 
@@ -757,7 +750,10 @@ def parse_opt(known=False):
     parser.add_argument('--artifact_alias', type=str, default='latest', help='W&B: Version of dataset artifact to use')
 
     parser.add_argument('--AL', type=str, default='True', help='using Active Learning or not')
-    parser.add_argument('--method', type=str, default='Corese', help='using Active Learning or not')
+    parser.add_argument('--method', type=str, default='Coreset', help='select the Active Learning method')
+
+    parser.add_argument('--input_bin_file', type=str, default='', help='Select the subset')
+    parser.add_argument('--output_bin_file', type=str, default='', help='Select the subset')
 
     opt = parser.parse_known_args()[0] if known else parser.parse_args()
     return opt
