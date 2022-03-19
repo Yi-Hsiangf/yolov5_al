@@ -31,7 +31,9 @@ import yaml
 
 from utils.downloads import gsutil_getsize
 from utils.metrics import box_iou, fitness
+from scipy.stats import entropy
 
+import torch.nn.functional as F
 # Settings
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -675,12 +677,16 @@ def clip_coords(boxes, shape):
 
 
 def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, multi_label=False,
-                        labels=(), max_det=300):
+                        labels=(), max_det=300, get_Entropy = False):
     """Runs Non-Maximum Suppression (NMS) on inference results
 
     Returns:
          list of detections, on (n,6) tensor per image [xyxy, conf, cls]
+        list of detections, on (n,6) tensor per image [xyxy, conf, cls, entropy]
     """
+
+    #print("prediction shape: ", prediction.shape)
+    #print("conf_thres: ", conf_thres)
 
     nc = prediction.shape[2] - 5  # number of classes
     xc = prediction[..., 4] > conf_thres  # candidates
@@ -699,7 +705,11 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
 
     t = time.time()
     output = [torch.zeros((0, 6), device=prediction.device)] * prediction.shape[0]
+    entropy_list = [1] * prediction.shape[0]
+    #print("original list: ", entropy_list)
+    count = 0
     for xi, x in enumerate(prediction):  # image index, image inference
+        #print("x shape: ", x.shape)
         # Apply constraints
         x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
@@ -723,10 +733,34 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
         # Box (center x, center y, width, height) to (x1, y1, x2, y2)
         box = xywh2xyxy(x[:, :4])
 
+        
         # Detections matrix nx6 (xyxy, conf, cls)
         if multi_label:
             i, j = (x[:, 5:] > conf_thres).nonzero(as_tuple=False).T
+            #print("x 1: ", x.shape) 
+            #print("i: ", i.shape)
+            #print("j: ", j.shape)
+            
+            # Calculate Entropy
+            if get_Entropy == True:
+                xx = x[:, 5:]
+                #print("xx: ", xx)
+                idx  = (xx==torch.max(xx)).nonzero()
+                ix = idx[0][0]
+                iy = idx[0][1]
+                #print("max: ", xx[ix][iy])
+                box_cls = F.softmax(xx[ix, :], dim=0)
+                #print("box_cls: ", box_cls)
+                #print("box_cls shape: ", box_cls.shape)
+                #print("max: ", max(box_cls))
+                entropy_value = entropy(box_cls.cpu().data.numpy(), base=80)   
+                #print("entropy_value: ", entropy_value)             
+                #print("xi: ", xi)
+                entropy_list[xi] = entropy_value
+
             x = torch.cat((box[i], x[i, j + 5, None], j[:, None].float()), 1)
+            #print("x 2: ", x.shape)
+            #print("x 2: ", x)
         else:  # best class only
             conf, j = x[:, 5:].max(1, keepdim=True)
             x = torch.cat((box, conf, j.float()), 1)[conf.view(-1) > conf_thres]
@@ -750,6 +784,9 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
         i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+        
+        #print("#### i ####: ", i.shape)
+        #print("i: ", i)
         if i.shape[0] > max_det:  # limit detections
             i = i[:max_det]
         if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
@@ -759,13 +796,18 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
             x[i, :4] = torch.mm(weights, x[:, :4]).float() / weights.sum(1, keepdim=True)  # merged boxes
             if redundant:
                 i = i[iou.sum(1) > 1]  # require redundancy
-
+        
+        #print("x of output: ", x.shape) 
         output[xi] = x[i]
         if (time.time() - t) > time_limit:
             LOGGER.warning(f'WARNING: NMS time limit {time_limit}s exceeded')
             break  # time limit exceeded
+    
 
-    return output
+    if get_Entropy == False:
+        return output
+    else:
+        return output, torch.FloatTensor(entropy_list)
 
 
 def strip_optimizer(f='best.pt', s=''):  # from utils.general import *; strip_optimizer()

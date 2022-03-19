@@ -99,10 +99,10 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     rand_state = np.random.RandomState(777)
     train_idx = []
     #pool_idx = list(range(16550)) #len of dataset
-    pool_idx = list(range(16500))
-    #pool_idx = list(range(100))
-    count = 1000
-    #count = 10
+    #pool_idx = list(range(16500))
+    pool_idx = list(range(100))
+    #count = 1000
+    count = 10
     for cycle in range(3):
         save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, Active_learning, method = \
             Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
@@ -128,7 +128,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         
         print("#############Cycle " + str(cycle) + "##################")
         if cycle == 0:
-            train_idx.extend(random_indices(pool_idx, rand_state, count=2000))
+            train_idx.extend(random_indices(pool_idx, rand_state, count=20))
         print("len of training pool: ", len(train_idx))
         print("len of pool idx: ", len(pool_idx))
         print("train_idx: ", train_idx)

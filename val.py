@@ -187,6 +187,8 @@ def run(data,
         if pt or jit or engine:
             im = im.to(device, non_blocking=True)
             targets = targets.to(device)
+        
+        #print("half: ", half)
         im = im.half() if half else im.float()  # uint8 to fp16/32
         im /= 255  # 0 - 255 to 0.0 - 1.0
         nb, _, height, width = im.shape  # batch size, channels, height, width
@@ -197,6 +199,8 @@ def run(data,
         out, train_out = model(im) if training else model(im, augment=augment, val=True)  # inference, loss outputs
         dt[1] += time_sync() - t2
 
+        #print("out before NMS val: ", [len(a) for a in out])
+    
         # Loss
         if compute_loss:
             loss += compute_loss([x.float() for x in train_out], targets)[1]  # box, obj, cls
@@ -208,6 +212,8 @@ def run(data,
         out = non_max_suppression(out, conf_thres, iou_thres, labels=lb, multi_label=True, agnostic=single_cls)
         dt[2] += time_sync() - t3
 
+
+        #print("out after NMS: ", len(out))
         # Metrics
         for si, pred in enumerate(out):
             labels = targets[targets[:, 0] == si, 1:]

@@ -121,4 +121,3 @@ def greedy_k_center(labeled, unlabeled, amount):
 
 
 
-def Entropy_select(device, model, labeled_loader, unlabel_loader, amount):
