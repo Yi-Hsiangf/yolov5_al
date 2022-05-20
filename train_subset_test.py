@@ -99,9 +99,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     rand_state = np.random.RandomState(777)
     train_idx = []
     #pool_idx = list(range(16550)) #len of dataset
-    pool_idx = list(range(16500))
+    pool_idx = list(range(2790))
     #pool_idx = list(range(100))
-    count = 1000
+    count = 500
     #count = 10
 
     save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, Active_learning, method, input_bin_file, output_bin_file = \
@@ -126,10 +126,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
    
     train_idx_np = np.fromfile(input_bin_file, dtype=np.int64)
     train_idx = list(train_idx_np) 
-    #train_idx.extend(random_indices(pool_idx, rand_state, count=20))
+    #train_idx.extend(random_indices(pool_idx, rand_state, count=500))
     for idx in train_idx:
         pool_idx.remove(idx)
-
     
 
 
@@ -626,6 +625,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     model.eval()
     selecting_start_time = time.time()
     if AL == True:
+
+
         unlabel_loader = create_dataloader(train_path, imgsz, batch_size // WORLD_SIZE, gs, single_cls,
                                             hyp=hyp, augment=True, cache=None if opt.cache == 'val' else opt.cache,
                                             rect=opt.rect, rank=LOCAL_RANK, workers=workers,
@@ -701,14 +702,14 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
             #select_id = list(torch.tensor(pool_idx)[new_indices].numpy())
             select_id = [pool_idx[i] for i in idx]
             print("select_id:", select_id)
-            train_idx_coreset = train_idx
+            train_idx_coreset = train_idx.copy()
             train_idx_coreset += select_id
             #for id in select_id:
             #    pool_idx.remove(id)
 
 
             print("after sampling")
-            print("train len: ", len(train_idx))
+            print("train len: ", len(train_idx_coreset))
             print("pool len: ", len(pool_idx))
             #non_choosen_set = [idx for idx in subset if idx not in select_indices_in_subset]
             #unlabeled_set = non_choosen_set + unlabeled_set[subset_num:] 
@@ -771,6 +772,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         np_train_idx = np.array(train_idx)
         np_train_idx.tofile(output_bin_file)
     
+
 
     selecting_end_time = time.time()
     print("total selecting time (min): ", (selecting_end_time - selecting_start_time) / 60)
