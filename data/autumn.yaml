@@ -1,0 +1,10 @@
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+
+path: /home/data/data/Temp1
+train: images/train  # train images
+val: images/val  # val images
+test: images/val # test images
+# Classes
+nc: 1  # number of classes
+names: [ 'Sorrel' ]  # class names
+
